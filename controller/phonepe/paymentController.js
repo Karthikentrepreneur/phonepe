@@ -1,6 +1,6 @@
-const crypto =  require('crypto');
+const crypto = require('crypto');
 const axios = require('axios');
-const {salt_key, merchant_id} = require('./secret')
+const { salt_key, merchant_id } = require('./secret');
 
 const newPayment = async (req, res) => {
     try {
@@ -10,7 +10,7 @@ const newPayment = async (req, res) => {
             merchantTransactionId: merchantTransactionId,
             merchantUserId: req.body.MUID,
             name: req.body.name,
-            amount: req.body.amount * 100,
+            amount: req.body.amount * 100, // Convert to paise
             redirectUrl: `http://localhost:5000/api/status/${merchantTransactionId}`,
             redirectMode: 'POST',
             mobileNumber: req.body.number,
@@ -18,6 +18,7 @@ const newPayment = async (req, res) => {
                 type: 'PAY_PAGE'
             }
         };
+
         const payload = JSON.stringify(data);
         const payloadMain = Buffer.from(payload).toString('base64');
         const keyIndex = 1;
@@ -25,7 +26,7 @@ const newPayment = async (req, res) => {
         const sha256 = crypto.createHash('sha256').update(string).digest('hex');
         const checksum = sha256 + '###' + keyIndex;
 
-        const prod_URL = "https://api.phonepe.com/apis/hermes/pg/v1/pay"
+        const prod_URL = "https://api.phonepe.com/apis/hermes/pg/v1/pay";
         const options = {
             method: 'POST',
             url: prod_URL,
@@ -39,58 +40,68 @@ const newPayment = async (req, res) => {
             }
         };
 
-        axios.request(options).then(function (response) {
-            console.log(response.data)
-            return res.redirect(response.data.data.instrumentResponse.redirectInfo.url)
-        })
-        .catch(function (error) {
-            console.error(error);
-        });
+        const response = await axios.request(options);
+        console.log('PhonePe API Response:', response.data);
+        
+        if (response.data.success === true) {
+            return res.redirect(response.data.data.instrumentResponse.redirectInfo.url);
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment initiation failed',
+                error: response.data
+            });
+        }
 
     } catch (error) {
-        res.status(500).send({
+        console.error('Payment Error:', error);
+        res.status(500).json({
             message: error.message,
             success: false
-        })
+        });
     }
-}
+};
 
-const checkStatus = async(req, res) => {
-    const merchantTransactionId = res.req.body.transactionId
-    const merchantId = res.req.body.merchantId
+const checkStatus = async (req, res) => {
+    try {
+        const merchantTransactionId = req.body.transactionId;
+        const merchantId = req.body.merchantId;
 
-    const keyIndex = 1;
-    const string = `/pg/v1/status/${merchantId}/${merchantTransactionId}` + salt_key;
-    const sha256 = crypto.createHash('sha256').update(string).digest('hex');
-    const checksum = sha256 + "###" + keyIndex;
+        const keyIndex = 1;
+        const string = `/pg/v1/status/${merchantId}/${merchantTransactionId}` + salt_key;
+        const sha256 = crypto.createHash('sha256').update(string).digest('hex');
+        const checksum = sha256 + "###" + keyIndex;
 
-    const options = {
-    method: 'GET',
-    url: `https://api.phonepe.com/apis/hermes/pg/v1/status/${merchantId}/${merchantTransactionId}`,
-    headers: {
-        accept: 'application/json',
-        'Content-Type': 'application/json',
-        'X-VERIFY': checksum,
-        'X-MERCHANT-ID': `${merchantId}`
-    }
-    };
+        const options = {
+            method: 'GET',
+            url: `https://api.phonepe.com/apis/hermes/pg/v1/status/${merchantId}/${merchantTransactionId}`,
+            headers: {
+                accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-VERIFY': checksum,
+                'X-MERCHANT-ID': `${merchantId}`
+            }
+        };
 
-    // CHECK PAYMENT TATUS
-    axios.request(options).then(async(response) => {
+        const response = await axios.request(options);
+        console.log('Status Check Response:', response.data);
+
         if (response.data.success === true) {
-            const url = `http://localhost:3000/success`
-            return res.redirect(url)
+            const url = `http://localhost:3000/success`;
+            return res.redirect(url);
         } else {
-            const url = `http://localhost:3000/failure`
-            return res.redirect(url)
+            const url = `http://localhost:3000/failure`;
+            return res.redirect(url);
         }
-    })
-    .catch((error) => {
-        console.error(error);
-    });
+
+    } catch (error) {
+        console.error('Status Check Error:', error);
+        const url = `http://localhost:3000/failure`;
+        return res.redirect(url);
+    }
 };
 
 module.exports = {
     newPayment,
     checkStatus
-}
+};
