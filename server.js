@@ -16,6 +16,11 @@ app.use(bodyParser.urlencoded({ extended: true }));
 const phonepeRoute = require('./routes/phonepe/phonepeRoute')
 app.use("/api", phonepeRoute);
 
+// Root route
+app.get('/', (req, res) => {
+  res.send('PhonePe Payment Server is running!');
+});
+
 // Starting Server
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
